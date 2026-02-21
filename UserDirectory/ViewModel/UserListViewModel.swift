@@ -7,27 +7,51 @@
 
 import Foundation
 
-
 protocol UserService {
-    func fetchUsers() async throws
+    func fetchUser() async throws -> [User]
+}
+
+final class RemoteUserService: UserService {
+    func fetchUser() async throws -> [User] {
+        
+        guard let url = URL(string: "https://jsonplaceholder.typicode.com/users") else { throw URLError(.badURL)
+        }
+        
+        
+        let (data, response) = try await URLSession.shared.data(from: url)
+        
+        guard let httpResponse = response as? HTTPURLResponse, 200...299 ~= httpResponse.statusCode else {
+            throw URLError(.badServerResponse)
+        }
+        
+        return try JSONDecoder().decode([User].self, from: data)
+    }
+
 }
 
 @MainActor
 class UserListViewModel: ObservableObject {
     @Published var users: [User] = []
+    @Published var isLoading = false
+    @Published var errorMessage: String?
+    
+    private let service: UserService
+    
+    init(service: UserService) {
+        self.service = service
+    }
     
     func fetchUsers() async  {
         
-        guard let url = URL(string: "https://jsonplaceholder.typicode.com/users") else {
-            return
-        }
+        isLoading = true
+        errorMessage = nil
+        
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            let decodedUsers = try JSONDecoder().decode([User].self, from: data)
-            users = decodedUsers
-            
+            users = try await service.fetchUser()
         } catch {
-            print("Error occured during fetch -- \(error)")
+            errorMessage = error.localizedDescription
         }
+        
+        isLoading = false
     }
 }
